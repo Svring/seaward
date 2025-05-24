@@ -8,9 +8,10 @@ import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { ChatBubble } from '@/components/ui/chat/chat-bubble';
 import { defaultChatStore } from 'ai';
 import { AppContext } from '@/providers/app-context-provider';
-import { useContext, useMemo } from 'react';
+import { useContext, useEffect, useMemo } from 'react';
 import { ResizablePanel, ResizablePanelGroup, ResizableHandle } from '@/components/ui/resizable';
 import { v4 as uuidv4 } from 'uuid';
+import { loadSessionMessages } from '@/database/actions/project-sessions-actions';
 
 export default function Chat() {
   const appContext = useContext(AppContext);
@@ -18,7 +19,7 @@ export default function Chat() {
   const projectId = appContext?.projectId;
   const projectSessionId = appContext?.projectSessionId;
   const selectedModel = appContext?.selectedModel;
-  
+
   const chatStore = useMemo(() => defaultChatStore({
     api: '/api/agent',
     maxSteps: 30,
@@ -27,9 +28,19 @@ export default function Chat() {
     generateId: uuidv4,
   }), [user, projectId, projectSessionId, selectedModel]);
 
-  const { messages, input, handleInputChange, handleSubmit, status } = useChat({
+  const { messages, setMessages, input, handleInputChange, handleSubmit, status } = useChat({
     chatStore,
   });
+
+  useEffect(() => {
+    if (projectSessionId) {
+      loadSessionMessages(projectSessionId).then((messages) => {
+        if (messages) {
+          setMessages(messages);
+        }
+      });
+    }
+  }, [projectSessionId]);
 
   return (
     <ResizablePanelGroup direction="horizontal" className="h-full w-full">

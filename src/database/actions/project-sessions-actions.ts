@@ -5,6 +5,7 @@ import configPromise from '@payload-config';
 import { revalidatePath } from 'next/cache';
 import { UIMessage } from 'ai';
 import { UIMessageSchema } from '@/database/schemas/ui-message-schema';
+import { v4 as uuidv4 } from 'uuid';
 
 const getPayloadClient = async () => {
   const payload = await getPayload({
@@ -48,8 +49,8 @@ export const createSessionForProject = async (projectId: string | number, sessio
 
     // 3. Update the project's sessions relationship
     const existingSessions = Array.isArray(project.project_sessions)
-        ? project.project_sessions.map((s: any) => (typeof s === 'object' && s !== null ? s.id : s)).filter(Boolean)
-        : [];
+      ? project.project_sessions.map((s: any) => (typeof s === 'object' && s !== null ? s.id : s)).filter(Boolean)
+      : [];
 
     await payload.update({
       collection: 'user_projects',
@@ -144,7 +145,7 @@ export const findSessions = async ({ where, sort, limit, page, depth }: FindSess
  * @param sessionId - The ID of the session to fetch messages for.
  * @returns An array of messages formatted according to MessageSchema, or null if there's an error.
  */
-export const getSessionMessages = async (sessionId: string | number): Promise<any[] | null> => {
+export const loadSessionMessages = async (sessionId: string | number): Promise<any[] | null> => {
   try {
     const payload = await getPayloadClient();
     const messagesResult = await payload.find({
@@ -158,53 +159,32 @@ export const getSessionMessages = async (sessionId: string | number): Promise<an
       depth: 0,
     });
 
+    // console.debug('[loadSessionMessages] Raw DB messages:', JSON.stringify(messagesResult.docs, null, 2));
+
     if (!messagesResult.docs || messagesResult.docs.length === 0) {
       return [];
     }
 
-    // Format messages according to MessageSchema and validate
+    // Adapt to new UIMessageSchema
     const formattedMessages = messagesResult.docs
       .map((msg: any) => {
-        // Create a formatted message object
-        const formattedMessage = {
-          id: msg.id || msg.id.toString(),
-          content: msg.content || '',
-          role: msg.role || 'assistant',
-          parts: msg.parts || [],
-          annotations: msg.annotations || [],
-          // createdAt is now expected to always exist on msg from DB due to schema changes
-          createdAt: new Date(msg.createdAt), 
-          plan: msg.plan || undefined,
-          metadata: msg.metadata || undefined,
+        // Only pick fields defined in UIMessageSchema
+        const formatted = {
+          id: msg.id,
+          role: msg.role,
+          parts: msg.parts,
+          metadata: msg.metadata === null ? undefined : msg.metadata,
         };
-
-        // Try to use rawData if available as it already might be properly formatted
-        if (msg.rawData) {
-          // If rawData exists and is already validated by the schema (during save)
-          // Ensure rawData.createdAt is a Date object if it comes from JSON
-          if (typeof msg.rawData.createdAt === 'string') {
-            msg.rawData.createdAt = new Date(msg.rawData.createdAt);
-          }
-          // Validate rawData against MessageSchema to ensure it conforms, especially createdAt
-          const rawDataValidationResult = UIMessageSchema.safeParse(msg.rawData);
-          if (rawDataValidationResult.success) {
-            return rawDataValidationResult.data;
-          } else {
-            console.warn(`Message ${msg.id} (rawData) failed validation:`, rawDataValidationResult.error.flatten());
-            // Fallback to formattedMessage if rawData is invalid
-          }
+        const validation = UIMessageSchema.safeParse(formatted);
+        if (!validation.success) {
+          console.warn(`Message ${msg.id} failed validation:`, validation.error.flatten());
+          return null;
         }
-
-        // Validate against MessageSchema
-        const validationResult = UIMessageSchema.safeParse(formattedMessage);
-        if (!validationResult.success) {
-          console.warn(`Message ${msg.id} (formatted) failed validation:`, validationResult.error.flatten());
-          return null; // Skip invalid messages
-        }
-
-        return validationResult.data;
+        return validation.data;
       })
-      .filter(Boolean); // Remove null entries (failed validation)
+      .filter(Boolean);
+
+    // console.debug('[loadSessionMessages] Formatted/validated messages:', JSON.stringify(formattedMessages, null, 2));
 
     return formattedMessages;
   } catch (error) {
@@ -260,7 +240,7 @@ export const saveSessionMessages = async (sessionId: string, messages: UIMessage
       const validationResult = UIMessageSchema.safeParse(preProcessedMessageData);
       if (!validationResult.success) {
         console.warn(`Skipping save for invalid message structure in session ${sessionId}:`, validationResult.error.flatten());
-        continue; 
+        continue;
       }
       const validMessage = validationResult.data;
       const dbMessageDataToSave: {
@@ -332,28 +312,28 @@ export const saveSessionMessages = async (sessionId: string, messages: UIMessage
       console.log(`[DEBUG] Updating session ${sessionId} message list.`);
       // Get current message IDs stored ON the session document (might be empty or just IDs)
       const currentSessionMessageIds = new Set(
-         (existingSession.session_messages || []).map((m: any) => typeof m === 'object' ? m.id : m)
-       );
-       
+        (existingSession.session_messages || []).map((m: any) => typeof m === 'object' ? m.id : m)
+      );
+
       // Combine existing and newly processed IDs
       processedMessageDbIds.forEach(id => currentSessionMessageIds.add(id));
       const finalMessageIds = Array.from(currentSessionMessageIds);
-      
+
       // Only update if the list has changed (or maybe always update to be safe?)
       // For simplicity, let's always update if we processed messages
       if (processedMessageDbIds.size > 0) {
-         console.log(`[DEBUG] Final message ID list for session ${sessionId}:`, finalMessageIds);
-          await payload.update({
-            collection: 'project_sessions',
-            id: sessionId, // Use string sessionId
-            data: {
-              // Cast to any[] to satisfy TS strictness, Payload handles ID arrays correctly
-              session_messages: finalMessageIds as any[], 
-            } as any,
-          });
-          console.log(`[DEBUG] Successfully updated session ${sessionId} with ${finalMessageIds.length} message relationships.`);
+        console.log(`[DEBUG] Final message ID list for session ${sessionId}:`, finalMessageIds);
+        await payload.update({
+          collection: 'project_sessions',
+          id: sessionId, // Use string sessionId
+          data: {
+            // Cast to any[] to satisfy TS strictness, Payload handles ID arrays correctly
+            session_messages: finalMessageIds as any[],
+          } as any,
+        });
+        console.log(`[DEBUG] Successfully updated session ${sessionId} with ${finalMessageIds.length} message relationships.`);
       } else {
-         console.log(`[DEBUG] Session ${sessionId} did not require message list update.`);
+        console.log(`[DEBUG] Session ${sessionId} did not require message list update.`);
       }
     } catch (sessionUpdateError) {
       console.error(`[ERROR] Failed to update session ${sessionId} message list:`, sessionUpdateError);
@@ -372,3 +352,73 @@ export const saveSessionMessages = async (sessionId: string, messages: UIMessage
 // Add functions for managing messages in a session if needed, e.g.:
 // export const addMessageToSession = async (sessionId: string | number, messageId: string | number): Promise<any | null> => { ... };
 // export const removeMessageFromSession = async (sessionId: string | number, messageId: string | number): Promise<any | null> => { ... };
+
+/**
+ * Converts response.messages (AssistantModelMessage | ToolModelMessage)[] into a single UIMessage suitable for storing.
+ */
+export async function convertResponseMessagesToUIMessage(
+  responseMessages: any[]
+): Promise<UIMessage | null> {
+  const partsForNewMessage: any[] = [];
+
+  const processPart = (part: any, type: string, extraProps: object = {}) => ({
+    type,
+    ...(type === 'text' || type === 'reasoning' ? { text: part.text } : {}),
+    ...(type === 'tool-invocation' ? { toolInvocation: { ...extraProps, ...part } } : {}),
+    ...(type === 'file' && (typeof part.data === 'string' || part.data instanceof URL)
+      ? {
+        mediaType: part.mediaType,
+        filename: part.filename,
+        url: part.data.toString(),
+      }
+      : {}),
+  });
+
+  for (const msg of responseMessages) {
+    if (msg.role === 'assistant') {
+      const content = msg.content;
+      if (typeof content === 'string') {
+        partsForNewMessage.push({ type: 'text', text: content });
+        continue;
+      }
+
+      for (const part of content) {
+        const { type } = part;
+        if (type === 'text' || type === 'reasoning') {
+          partsForNewMessage.push(processPart(part, type));
+        } else if (type === 'tool-call') {
+          partsForNewMessage.push(
+            processPart(part, 'tool-invocation', {
+              toolCallId: part.toolCallId,
+              toolName: part.toolName,
+              args: part.args,
+              state: 'call',
+            })
+          );
+        } else if (type === 'file' && (typeof part.data === 'string' || part.data instanceof URL)) {
+          partsForNewMessage.push(processPart(part, 'file'));
+        }
+      }
+    }
+
+    if (msg.role === 'tool') {
+      for (const part of msg.content) {
+        partsForNewMessage.push(
+          processPart(part, 'tool-invocation', {
+            toolCallId: part.toolCallId,
+            toolName: part.toolName,
+            args: part.args ?? {},
+            result: part.result,
+            isError: part.isError,
+            state: 'result',
+          })
+        );
+      }
+    }
+  }
+
+  return partsForNewMessage.length
+    ? { id: uuidv4(), role: 'assistant', parts: partsForNewMessage }
+    : null;
+}
+

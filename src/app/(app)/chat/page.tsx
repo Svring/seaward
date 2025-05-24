@@ -6,7 +6,6 @@ import { ChatInputArea } from '@/components/ui/chat/chat-input-area';
 import { ChatBubbleMessage } from '@/components/ui/chat/chat-bubble';
 import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { ChatBubble } from '@/components/ui/chat/chat-bubble';
-import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { Hero } from "@/components/blocks/hero"
 import { defaultChatStore } from 'ai';
@@ -33,10 +32,7 @@ export default function Chat() {
   const showMessageArea = messages.length > 0 || status === "submitted";
 
   return (
-    <motion.div layout className={cn(
-      "flex flex-col h-full w-full"
-      // !showMessageArea && "justify-center items-center"
-    )}>
+    <motion.div layout className="flex flex-col h-full w-full">
       {showMessageArea && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -53,8 +49,8 @@ export default function Chat() {
                 >
                   <ChatBubbleMessage
                     variant={message.role === "user" ? "sent" : "received"}
+                    parts={message.parts}
                   >
-                    {message.parts.map((part) => part.type === 'text' ? part.text : '').join('')}
                   </ChatBubbleMessage>
                 </ChatBubble>
               ))}
