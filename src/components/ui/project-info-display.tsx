@@ -1,4 +1,6 @@
-import React from "react";
+'use client';
+
+import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,10 +19,15 @@ import {
   LayoutGrid,
   LineChart,
   Settings,
-  Users
+  Users,
+  CheckCircle,
+  XCircle
 } from "lucide-react";
 import type { UserProject } from '@/payload-types'; // Added UserProject import
 import { HoverPeek } from "@/components/ui/link-preview"
+import { Button } from "./button";
+import { activateGalateaForSSHDevice } from "@/providers/galatea-provider/galatea-provider";
+import { useTransition } from "react";
 
 interface ProjectStat {
   label: string;
@@ -97,6 +104,59 @@ const ProjectInfoDisplay: React.FC<ProjectInfoDisplayProps> = ({ project, loadin
     // { name: "Alex Johnson", role: "Lead Developer", avatar: "https://i.pravatar.cc/100?img=1" },
   ];
 
+  // Health check state
+  const [healthStatus, setHealthStatus] = useState<'controlled' | 'uncontrolled' | 'unknown'>('unknown');
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    let interval: number | null = null;
+    const checkHealth = async () => {
+      if (!project?.public_address) {
+        setHealthStatus('unknown');
+        return;
+      }
+      try {
+        const res = await fetch(`${project.public_address.replace(/\/$/, '')}/galatea/api/health`, { method: 'GET' });
+        if (res.status === 200) {
+          setHealthStatus('controlled');
+        } else {
+          setHealthStatus('uncontrolled');
+        }
+      } catch {
+        setHealthStatus('uncontrolled');
+      }
+    };
+    if (project?.public_address) {
+      checkHealth(); // Initial check
+      interval = window.setInterval(checkHealth, 10000); // Check every 10 seconds
+    } else {
+      setHealthStatus('unknown');
+    }
+    return () => {
+      if (interval !== null) window.clearInterval(interval);
+    };
+  }, [project?.public_address]);
+
+  async function handleUploadGalatea(formData?: FormData) {
+    if (!project?.ssh_credentials || project.ssh_credentials.length === 0) return;
+    setUploadError(null);
+    setUploadSuccess(false);
+    const cred = project.ssh_credentials[0];
+    const sshConfig = {
+      host: cred.address ?? '',
+      port: cred.port ?? undefined,
+      username: cred.username ?? '',
+      password: cred.password ?? undefined,
+    };
+    try {
+      await activateGalateaForSSHDevice(sshConfig);
+      setUploadSuccess(true);
+    } catch (err: any) {
+      setUploadError(err?.message || 'Failed to activate Galatea.');
+    }
+  }
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl bg-background text-foreground">
@@ -158,7 +218,37 @@ const ProjectInfoDisplay: React.FC<ProjectInfoDisplayProps> = ({ project, loadin
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <h3 className="font-medium text-muted-foreground">Public Address:</h3>
+                  <h3 className="font-medium text-muted-foreground flex items-center gap-2">Public Address:
+                    {healthStatus === 'controlled' && (
+                      <span className="flex items-center gap-1 text-green-600 text-xs font-semibold">
+                        <CheckCircle size={14} className="text-green-600" /> Controlled
+                      </span>
+                    )}
+                    {healthStatus === 'uncontrolled' && (
+                      <span className="flex items-center gap-1 text-red-600 text-xs font-semibold">
+                        <XCircle size={14} className="text-red-600" /> Uncontrolled
+                        <Button
+                          className="ml-2 bg-transparent text-foreground rounded ring-1 ring-foreground/10"
+                          onClick={() => startTransition(() => handleUploadGalatea())}
+                          disabled={isPending}
+                        >
+                          {isPending ? 'Activating...' : 'Activate Galatea'}
+                        </Button>
+                      </span>
+                    )}
+                    {healthStatus === 'unknown' && (
+                      <span className="flex items-center gap-1 text-muted-foreground text-xs font-semibold">
+                        <Clock size={12} /> Checking...
+                      </span>
+                    )}
+                  </h3>
+                  {/* Feedback for upload */}
+                  {uploadError && (
+                    <div className="text-red-600 text-xs mt-1">{uploadError}</div>
+                  )}
+                  {uploadSuccess && (
+                    <div className="text-green-600 text-xs mt-1">Galatea activated and started successfully.</div>
+                  )}
                   <HoverPeek url={project.public_address || 'N/A'}>
                     <a
                       href={project.public_address || 'N/A'}

@@ -3,8 +3,16 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import MessageLoading from "./message-loading";
-import { Button } from "@/components/ui/button";
 import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
+import {
+  Disclosure,
+  DisclosureContent,
+  DisclosureTrigger,
+} from "@/components/ui/disclosure";
+import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { Check, X } from "lucide-react";
+import { StarBorder } from "@/components/ui/star-border";
 
 // ChatBubble
 const chatBubbleVariant = cva(
@@ -29,7 +37,7 @@ const chatBubbleVariant = cva(
 
 interface ChatBubbleProps
   extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof chatBubbleVariant> {}
+  VariantProps<typeof chatBubbleVariant> { }
 
 const ChatBubble = React.forwardRef<HTMLDivElement, ChatBubbleProps>(
   ({ className, variant, layout, children, ...props }, ref) => (
@@ -44,9 +52,9 @@ const ChatBubble = React.forwardRef<HTMLDivElement, ChatBubbleProps>(
       {React.Children.map(children, (child) =>
         React.isValidElement(child) && typeof child.type !== "string"
           ? React.cloneElement(child, {
-              variant,
-              layout,
-            } as React.ComponentProps<typeof child.type>)
+            variant,
+            layout,
+          } as React.ComponentProps<typeof child.type>)
           : child,
       )}
     </div>
@@ -76,7 +84,7 @@ const ChatBubbleAvatar: React.FC<ChatBubbleAvatarProps> = ({
 type UIMessagePart = {
   type: string;
   text?: string;
-  toolInvocation?: { toolName: string; [key: string]: any };
+  toolInvocation?: { toolName: string;[key: string]: any };
   providerMetadata?: any;
   url?: string;
   title?: string;
@@ -86,7 +94,7 @@ type UIMessagePart = {
   [key: string]: any; // Allow other properties
 };
 
-function renderUIMessagePart(part: UIMessagePart) {
+function renderUIMessagePart(part: UIMessagePart, index: number, addToolResult?: (toolResult: any) => void) {
   switch (part.type) {
     case 'text':
       return <MarkdownRenderer>{part.text || ''}</MarkdownRenderer>;
@@ -104,13 +112,126 @@ function renderUIMessagePart(part: UIMessagePart) {
           )}
         </div>
       );
-    case 'tool-invocation':
-      return (
-        <div className="bg-blue-50 dark:bg-blue-900/30 border-l-4 border-blue-400 dark:border-blue-600 p-2 my-1 rounded text-sm">
-          <strong>Tool: {part.toolInvocation?.toolName || 'Unknown Tool'}</strong>
-          <pre className="text-xs whitespace-pre-wrap break-all mt-1">{JSON.stringify(part.toolInvocation, null, 2)}</pre>
-        </div>
-      );
+    case 'tool-invocation': {
+      const toolInvocation: any = part.toolInvocation || {};
+      const toolName = toolInvocation.toolName || 'Unknown Tool';
+      const args = toolInvocation.args;
+      const result = 'result' in toolInvocation ? toolInvocation.result : undefined;
+      const toolCallId = toolInvocation.toolCallId;
+      // Special UI for askConfirmationTool
+      if (
+        toolName === 'askConfirmationTool' &&
+        toolInvocation.state === 'call' &&
+        typeof addToolResult === 'function'
+      ) {
+        return (
+          <div key={toolCallId} className="p-2 border border-muted rounded-xl bg-transparent flex flex-col">
+            <div className="font-semibold flex items-center gap-2">
+              {/* <StarBorder className="w-4 h-4"> */}
+                {args?.proposition || 'May I continue?'}
+              {/* </StarBorder> */}
+            </div>
+            <div className="flex justify-end ">
+              <Button
+                size="icon"
+                className="bg-transparent cursor-pointer text-foreground hover:bg-transparent"
+                onClick={() =>
+                  addToolResult({
+                    toolCallId,
+                    result: 'approved',
+                  })
+                }
+                aria-label="Approve"
+              >
+                <Check className="w-4 h-4" />
+              </Button>
+              <Button
+                size="icon"
+                className="bg-transparent cursor-pointer text-foreground hover:bg-transparent"
+                onClick={() =>
+                  addToolResult({
+                    toolCallId,
+                    result: 'rejected',
+                  })
+                }
+                aria-label="Reject"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        );
+      }
+      switch (toolInvocation.state) {
+        case 'partial-call':
+          return (
+            <Disclosure className="w-full max-w-md rounded-md border border-zinc-200 px-3 dark:border-zinc-700 my-2">
+              <DisclosureTrigger>
+                <button className="w-full py-2 text-left text-sm font-semibold" type="button">
+                  Tool (partial call): {toolName}
+                </button>
+              </DisclosureTrigger>
+              <DisclosureContent>
+                <div className="overflow-hidden pb-3">
+                  <div className="pt-1 font-mono text-sm">
+                    <span className="font-bold">Args (partial):</span>
+                    <pre className="mt-1 rounded-md bg-zinc-100 p-2 text-xs dark:bg-zinc-950 whitespace-pre-wrap break-all">{JSON.stringify(args, null, 2)}</pre>
+                  </div>
+                </div>
+              </DisclosureContent>
+            </Disclosure>
+          );
+        case 'call':
+          return (
+            <Disclosure className="w-full max-w-md rounded-md border border-zinc-200 px-3 dark:border-zinc-700 my-2">
+              <DisclosureTrigger>
+                <button className="w-full py-2 text-left text-sm font-semibold" type="button">
+                  Tool Calling: {toolName}
+                </button>
+              </DisclosureTrigger>
+              <DisclosureContent>
+                <div className="overflow-hidden pb-3">
+                  <div className="pt-1 font-mono text-sm">
+                    <span className="font-bold">Args:</span>
+                    <pre className="mt-1 rounded-md bg-zinc-100 p-2 text-xs dark:bg-zinc-950 whitespace-pre-wrap break-all">{JSON.stringify(args, null, 2)}</pre>
+                  </div>
+                </div>
+              </DisclosureContent>
+            </Disclosure>
+          );
+        case 'result':
+          return (
+            <Disclosure className="w-full max-w-md rounded-md border border-zinc-200 px-3 dark:border-zinc-700 my-2">
+              <DisclosureTrigger>
+                <button className="w-full py-2 text-left text-sm font-semibold" type="button">
+                  Tool Result: {toolName}
+                </button>
+              </DisclosureTrigger>
+              <DisclosureContent>
+                <div className="overflow-hidden pb-3">
+                  <div className="pt-1 font-mono text-sm">
+                    <div className="mb-2">
+                      <span className="font-bold">Args:</span>
+                      <pre className="mt-1 rounded-md bg-zinc-100 p-2 text-xs dark:bg-zinc-950 whitespace-pre-wrap break-all">{JSON.stringify(args, null, 2)}</pre>
+                    </div>
+                    <div>
+                      <span className="font-bold">Result:</span>
+                      <pre className="mt-1 rounded-md bg-zinc-100 p-2 text-xs dark:bg-zinc-950 whitespace-pre-wrap break-all">{JSON.stringify(result, null, 2)}</pre>
+                    </div>
+                  </div>
+                </div>
+              </DisclosureContent>
+            </Disclosure>
+          );
+        default:
+          return (
+            <div className="my-1 p-2 border border-red-400 dark:border-red-600 rounded text-sm bg-red-50 dark:bg-red-900/30">
+              <strong>Unknown Tool Invocation State:</strong> {toolInvocation.state}
+              <pre className="text-xs whitespace-pre-wrap break-all mt-1">{JSON.stringify(toolInvocation, null, 2)}</pre>
+            </div>
+          );
+      }
+    }
     case 'source-url':
       return (
         <div className="my-1 text-sm">
@@ -137,7 +258,13 @@ function renderUIMessagePart(part: UIMessagePart) {
         </div>
       );
     case 'step-start':
-      return <div className="text-xs text-gray-400 dark:text-gray-500 my-2 py-1 border-t border-b border-gray-200 dark:border-gray-700">--- Step Start ---</div>;
+      return index > 0 ? (
+        <div className="relative my-2 text-muted-foreground p-1 flex items-center justify-center">
+          <hr className="border-muted flex-1" />
+          <span className="px-2 text-xs font-medium">new step</span>
+          <hr className="border-muted flex-1" />
+        </div>
+      ) : null;
     default:
       if (part.type && part.type.startsWith('data-')) {
         return (
@@ -177,9 +304,11 @@ const chatBubbleMessageVariants = cva("px-3 py-2", {
 
 interface ChatBubbleMessageProps
   extends React.HTMLAttributes<HTMLDivElement>,
-    VariantProps<typeof chatBubbleMessageVariants> {
+  VariantProps<typeof chatBubbleMessageVariants> {
   isLoading?: boolean;
   parts?: UIMessagePart[];
+  index?: number;
+  addToolResult?: (toolResult: any) => void;
 }
 
 const ChatBubbleMessage = React.forwardRef<
@@ -187,7 +316,7 @@ const ChatBubbleMessage = React.forwardRef<
   ChatBubbleMessageProps
 >(
   (
-    { className, variant, layout, isLoading = false, parts, ...props },
+    { className, variant, layout, isLoading = false, parts, addToolResult, ...props },
     ref,
   ) => {
     // Determine backdrop class based on variant
@@ -217,7 +346,7 @@ const ChatBubbleMessage = React.forwardRef<
             </div>
           ) : (
             parts?.map((part, index) => (
-              <div key={`${part.type}-${index}`}>{renderUIMessagePart(part)}</div>
+              <div key={`${part.type}-${index}`}>{renderUIMessagePart(part, index, addToolResult)}</div>
             ))
           )}
         </div>

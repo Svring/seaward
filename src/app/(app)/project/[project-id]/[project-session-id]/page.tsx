@@ -28,7 +28,7 @@ export default function Chat() {
     generateId: uuidv4,
   }), [user, projectId, projectSessionId, selectedModel]);
 
-  const { messages, setMessages, input, handleInputChange, handleSubmit, status } = useChat({
+  const { messages, setMessages, input, handleInputChange, handleSubmit, status, addToolResult } = useChat({
     chatStore,
   });
 
@@ -49,7 +49,7 @@ export default function Chat() {
           <div className="flex-1 w-full overflow-y-auto no-scrollbar">
             <ScrollArea className="flex-1">
               <ChatMessageList className="rounded-xl">
-                {messages.map((message) => (
+                {messages.map((message, index) => (
                   <ChatBubble
                     key={message.id}
                     variant={message.role === "user" ? "sent" : "received"}
@@ -57,10 +57,13 @@ export default function Chat() {
                     <ChatBubbleMessage
                       variant={message.role === "user" ? "sent" : "received"}
                       parts={message.parts}
+                      index={index}
+                      addToolResult={addToolResult}
                     >
                     </ChatBubbleMessage>
                   </ChatBubble>
                 ))}
+                {/* {JSON.stringify(messages)} */}
                 {status === "submitted" && (
                   <ChatBubble variant="received">
                     <ChatBubbleMessage isLoading />

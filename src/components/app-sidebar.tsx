@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Calendar, Home, Inbox, Search, Settings, MessageSquare, ChevronsUpDown, User, Link, ExternalLink, Plus, Trash } from "lucide-react"
 import { SidebarFooter, useSidebar } from "@/components/ui/sidebar"
 import { SidebarToggle } from "@/components/admin-panel/sidebar-toggle";
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { toast } from "sonner"
 import useSWR from "swr"
 
@@ -37,6 +37,7 @@ const chatItems = [
 export function AppSidebar() {
   const { open, toggleSidebar } = useSidebar()
   const pathname = usePathname();
+  const router = useRouter();
 
   // Extract projectId from pathname
   const projectPathRegex = /^\/project\/([^\/]+)(?:\/[^\/]+)?$/;
@@ -83,8 +84,14 @@ export function AppSidebar() {
     if (!currentProject) return;
     setCreatingSession(true);
     try {
-      await createSessionForProject(currentProject.id);
+      const newSession = await createSessionForProject(currentProject.id);
       await mutateProject(); // Refresh project and sessions
+      if (newSession && newSession.id) {
+        router.push(`/project/${currentProject.id}/${newSession.id}`);
+      } else {
+        // Fallback or error if newSession or its ID is not returned
+        toast.info("Session created, but navigation failed. Please refresh or select from sidebar.");
+      }
     } catch (error) {
       console.error('Error creating session:', error);
       toast.error("Failed to create session. Please try again.");
