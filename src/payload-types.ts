@@ -178,6 +178,7 @@ export interface UserProject {
     | null;
   public_address?: string | null;
   internal_vector_store_address?: string | null;
+  public_vector_store_address?: string | null;
   project_sessions?: (string | ProjectSession)[] | null;
   updatedAt: string;
   createdAt: string;
@@ -352,6 +353,7 @@ export interface UserProjectsSelect<T extends boolean = true> {
       };
   public_address?: T;
   internal_vector_store_address?: T;
+  public_vector_store_address?: T;
   project_sessions?: T;
   updatedAt?: T;
   createdAt?: T;

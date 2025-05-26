@@ -28,6 +28,7 @@ import { HoverPeek } from "@/components/ui/link-preview"
 import { Button } from "./button";
 import { activateGalateaForSSHDevice } from "@/providers/galatea-provider/galatea-provider";
 import { useTransition } from "react";
+import { updateUserProject } from '@/database/actions/user-projects-actions';
 
 interface ProjectStat {
   label: string;
@@ -110,6 +111,12 @@ const ProjectInfoDisplay: React.FC<ProjectInfoDisplayProps> = ({ project, loadin
   const [uploadSuccess, setUploadSuccess] = useState(false);
   const [isPending, startTransition] = useTransition();
 
+  // Editable project name state
+  const [editingName, setEditingName] = useState(false);
+  const [nameInput, setNameInput] = useState(project?.name || '');
+  const [nameLoading, setNameLoading] = useState(false);
+  const [nameError, setNameError] = useState<string | null>(null);
+
   useEffect(() => {
     let interval: number | null = null;
     const checkHealth = async () => {
@@ -138,6 +145,25 @@ const ProjectInfoDisplay: React.FC<ProjectInfoDisplayProps> = ({ project, loadin
       if (interval !== null) window.clearInterval(interval);
     };
   }, [project?.public_address]);
+
+  useEffect(() => {
+    setNameInput(project?.name || '');
+  }, [project?.name]);
+
+  const handleNameSave = async () => {
+    if (!project) return;
+    setNameLoading(true);
+    setNameError(null);
+    try {
+      const updated = await updateUserProject(project.id, { name: nameInput });
+      if (!updated) throw new Error('Failed to update project name');
+      setEditingName(false);
+    } catch (err: any) {
+      setNameError(err?.message || 'Failed to update project name');
+    } finally {
+      setNameLoading(false);
+    }
+  };
 
   async function handleUploadGalatea(formData?: FormData) {
     if (!project?.ssh_credentials || project.ssh_credentials.length === 0) return;
@@ -168,10 +194,43 @@ const ProjectInfoDisplay: React.FC<ProjectInfoDisplayProps> = ({ project, loadin
       >
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start gap-4">
-          <div>
-            <h1 className="text-3xl font-bold">{project.name}</h1>
-            {/* project.description is not in UserProject, add if available */}
-            {/* <p className="text-muted-foreground mt-2 max-w-2xl">{project.description}</p> */}
+          <div className="flex items-center gap-2">
+            {editingName ? (
+              <>
+                <input
+                  className="text-3xl font-bold bg-background border rounded px-2 py-1 mr-2 focus:outline-none focus:ring"
+                  value={nameInput}
+                  onChange={e => setNameInput(e.target.value)}
+                  disabled={nameLoading}
+                  autoFocus
+                />
+                <button
+                  className="text-primary font-semibold mr-1"
+                  onClick={handleNameSave}
+                  disabled={nameLoading || !nameInput.trim()}
+                >
+                  {nameLoading ? 'Saving...' : 'Save'}
+                </button>
+                <button
+                  className="text-muted-foreground"
+                  onClick={() => { setEditingName(false); setNameInput(project?.name || ''); }}
+                  disabled={nameLoading}
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <h1 className="text-3xl font-bold">{project.name}</h1>
+                <button
+                  className="ml-2 text-muted-foreground hover:text-primary underline text-sm"
+                  onClick={() => setEditingName(true)}
+                  title="Edit project name"
+                >
+                  Edit
+                </button>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="flex items-center gap-1">
@@ -182,6 +241,7 @@ const ProjectInfoDisplay: React.FC<ProjectInfoDisplayProps> = ({ project, loadin
             {/* <Badge variant={"default"}>Active</Badge> */}
           </div>
         </div>
+        {nameError && <div className="text-red-600 text-xs mt-1">{nameError}</div>}
 
         {/* Quick Stats - Adapted to UserProject */}
         {projectStats.length > 0 && (
@@ -264,6 +324,22 @@ const ProjectInfoDisplay: React.FC<ProjectInfoDisplayProps> = ({ project, loadin
                 <div className="space-y-2">
                   <h3 className="font-medium text-muted-foreground">Internal Vector Store Address:</h3>
                   <p>{project.internal_vector_store_address || 'N/A'}</p>
+                </div>
+                <Separator />
+                <div className="space-y-2">
+                  <h3 className="font-medium text-muted-foreground">Public Vector Store Address:</h3>
+                  {project.public_vector_store_address ? (
+                    <a
+                      href={project.public_vector_store_address}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline"
+                    >
+                      {project.public_vector_store_address}
+                    </a>
+                  ) : (
+                    <p>N/A</p>
+                  )}
                 </div>
                 <Separator />
                 <div className="space-y-2">

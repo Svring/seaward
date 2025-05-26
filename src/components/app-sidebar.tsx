@@ -22,7 +22,7 @@ import { InfoCard, InfoCardAction, InfoCardContent, InfoCardDescription, InfoCar
 
 import { getCurrentUser } from "@/database/actions/users-actions";
 import { findUserProjects, getUserProjectById } from "@/database/actions/user-projects-actions";
-import { createSessionForProject, deleteSession } from "@/database/actions/project-sessions-actions";
+import { createSessionForProject, deleteSession, updateSession } from "@/database/actions/project-sessions-actions";
 import { User as UserType, UserProject, ProjectSession } from "@/payload-types";
 
 // Chat items
@@ -114,6 +114,38 @@ export function AppSidebar() {
     }
   };
 
+  // Handler to rename a session
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [renamingSessionName, setRenamingSessionName] = useState<string>("");
+  const [renamingLoading, setRenamingLoading] = useState(false);
+
+  const handleStartRename = (session: any) => {
+    setRenamingSessionId(session.id);
+    setRenamingSessionName(session.name || "");
+  };
+
+  const handleRenameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setRenamingSessionName(e.target.value);
+  };
+
+  const handleRenameBlurOrSubmit = async (session: any) => {
+    if (!renamingSessionId) return;
+    if (renamingSessionName.trim() && renamingSessionName !== session.name) {
+      setRenamingLoading(true);
+      try {
+        await updateSession(renamingSessionId, { name: renamingSessionName.trim() });
+        await mutateProject();
+      } catch (error) {
+        toast.error("Failed to rename session. Please try again.");
+      } finally {
+        setRenamingLoading(false);
+        setRenamingSessionId(null);
+      }
+    } else {
+      setRenamingSessionId(null);
+    }
+  };
+
   if (isProjectPage) {
     return (
       <Sidebar collapsible="icon">
@@ -171,28 +203,59 @@ export function AppSidebar() {
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 ) : currentProjectSessions.length > 0 ? (
-                  currentProjectSessions.map((session) => (
-                    <SidebarMenuItem key={session.id} className="flex items-center justify-between">
-                      <SidebarMenuButton asChild className="flex-1 min-w-0">
-                        <a href={`/project/${currentProject?.id}/${session.id}`} className="flex items-center min-w-0">
-                          <MessageSquare className="mr-2" size={16} />
-                          <span className="truncate">{session.name || 'Unnamed Session'}</span>
-                        </a>
-                      </SidebarMenuButton>
-                      <button
-                        type="button"
-                        className="ml-2 p-1 text-muted-foreground hover:text-destructive"
-                        aria-label="Delete session"
-                        disabled={creatingSession}
-                        onClick={async (e) => {
-                          e.preventDefault();
-                          await handleDeleteSession(session.id);
-                        }}
-                      >
-                        <Trash size={16} />
-                      </button>
-                    </SidebarMenuItem>
-                  ))
+                  currentProjectSessions.map((session) => {
+                    const isSelected = pathname === `/project/${currentProject?.id}/${session.id}`;
+                    return (
+                      <SidebarMenuItem key={session.id} className="flex items-center justify-between">
+                        <SidebarMenuButton asChild className="flex-1 min-w-0">
+                          <a
+                            href={`/project/${currentProject?.id}/${session.id}`}
+                            className="flex items-center min-w-0"
+                            onClick={e => {
+                              if (isSelected) {
+                                e.preventDefault();
+                                handleStartRename(session);
+                              }
+                            }}
+                          >
+                            <MessageSquare className="mr-2" size={16} />
+                            {renamingSessionId === session.id ? (
+                              <input
+                                className="truncate bg-background border rounded px-1 py-0.5 text-sm min-w-0 w-full"
+                                value={renamingSessionName}
+                                autoFocus
+                                disabled={renamingLoading}
+                                onChange={handleRenameChange}
+                                onBlur={() => handleRenameBlurOrSubmit(session)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleRenameBlurOrSubmit(session);
+                                  } else if (e.key === 'Escape') {
+                                    setRenamingSessionId(null);
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <span className="truncate">{session.name || 'Unnamed Session'}</span>
+                            )}
+                          </a>
+                        </SidebarMenuButton>
+                        <button
+                          type="button"
+                          className="ml-2 p-1 text-muted-foreground hover:text-destructive"
+                          aria-label="Delete session"
+                          disabled={creatingSession}
+                          onClick={async (e) => {
+                            e.preventDefault();
+                            await handleDeleteSession(session.id);
+                          }}
+                        >
+                          <Trash size={16} />
+                        </button>
+                      </SidebarMenuItem>
+                    );
+                  })
                 ) : (
                   <SidebarMenuItem>
                     <SidebarMenuButton disabled>

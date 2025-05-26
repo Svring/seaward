@@ -8,10 +8,11 @@ import { ChatMessageList } from '@/components/ui/chat/chat-message-list';
 import { ChatBubble } from '@/components/ui/chat/chat-bubble';
 import { defaultChatStore } from 'ai';
 import { AppContext } from '@/providers/app-context-provider';
-import { useContext, useEffect, useMemo } from 'react';
+import { useContext, useEffect, useMemo, useState } from 'react';
 import { ResizablePanel, ResizablePanelGroup, ResizableHandle } from '@/components/ui/resizable';
 import { v4 as uuidv4 } from 'uuid';
 import { loadSessionMessages } from '@/database/actions/project-sessions-actions';
+import { getUserProjectById } from '@/database/actions/user-projects-actions';
 
 export default function Chat() {
   const appContext = useContext(AppContext);
@@ -19,6 +20,9 @@ export default function Chat() {
   const projectId = appContext?.projectId;
   const projectSessionId = appContext?.projectSessionId;
   const selectedModel = appContext?.selectedModel;
+
+  // State for public address
+  const [publicAddress, setPublicAddress] = useState<string | null>(null);
 
   const chatStore = useMemo(() => defaultChatStore({
     api: '/api/agent',
@@ -41,6 +45,14 @@ export default function Chat() {
       });
     }
   }, [projectSessionId]);
+
+  useEffect(() => {
+    if (projectId) {
+      getUserProjectById(projectId).then((project) => {
+        setPublicAddress(project?.public_address || null);
+      });
+    }
+  }, [projectId]);
 
   return (
     <ResizablePanelGroup direction="horizontal" className="h-full w-full">
@@ -84,8 +96,19 @@ export default function Chat() {
       </ResizablePanel>
       <ResizableHandle />
       <ResizablePanel defaultSize={60} minSize={20}>
-        {/* Empty right panel for future content */}
-        <div className="h-full w-full"></div>
+        {/* Right panel: show the iframe if available */}
+        <div className="h-full w-full flex items-center justify-center">
+          {publicAddress && (
+            <div className="w-full max-w-full aspect-[4/3] border rounded overflow-hidden">
+              <iframe
+                src={publicAddress}
+                title="Project Public Address"
+                className="w-full h-full border-0"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              />
+            </div>
+          )}
+        </div>
       </ResizablePanel>
     </ResizablePanelGroup>
   );

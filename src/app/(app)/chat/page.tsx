@@ -79,7 +79,7 @@ export default function Chat() {
         >
           <Hero
             heroTitle="Seaward"
-            subtitle="We have lingered in the chambers of the sea, by sea-girls wreathed with seaweed red and brown."
+            subtitle="Look up models with a license of cc-by-sa-4.0 and sort by most likes on Hugging face, save top 5 to file."
             actions={[
               {
                 label: "View Projects",

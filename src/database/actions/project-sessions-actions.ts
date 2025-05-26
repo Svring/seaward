@@ -229,6 +229,17 @@ export const saveSessionMessages = async (sessionId: string, messages: UIMessage
 
     // --- Process Each Message --- 
     for (const message of messages) { // message is now of type UIMessage
+      // Skip messages that have any part of type 'tool-invocation' with state 'call'
+      const hasToolCall = Array.isArray(message.parts) && message.parts.some(
+        (part: any) =>
+          part.type === 'tool-invocation' &&
+          part.toolInvocation &&
+          part.toolInvocation.state === 'call'
+      );
+      if (hasToolCall) {
+        console.log(`[DEBUG] Skipping message ${message.id} because it contains a tool-invocation with state 'call'.`);
+        continue;
+      }
       const { ...messageDataFromInput } = message;
 
       // Ensure createdAt is a Date object before validation

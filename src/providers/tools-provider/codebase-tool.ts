@@ -18,12 +18,17 @@ export const codebaseFindFilesTool = tool({
         },
         body: JSON.stringify({ dir, suffixes, exclude_dirs }),
       });
-      const data = await response.json();
-
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        // If not JSON, try to get plain text
+        const text = await response.text();
+        return { success: false, error: `Failed to find files: ${text}` };
+      }
       if (!response.ok) {
         return { success: false, error: data.message || "Failed to find files" };
       }
-
       return {
         success: true,
         files: data.files || [],
@@ -110,7 +115,14 @@ export const codebaseEditorCommandTool = tool({
         },
         body: JSON.stringify(body),
       });
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        // If not JSON, try to get plain text
+        const text = await response.text();
+        return { success: false, error: `Failed to execute editor command: ${text}` };
+      }
       if (!response.ok) {
         return { success: false, error: data.message || data.error || "Failed to execute editor command" };
       }
@@ -135,7 +147,14 @@ export const codebaseNpmScriptTool = tool({
           'Content-Type': 'application/json',
         },
       });
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (jsonError) {
+        // If not JSON, try to get plain text
+        const text = await response.text();
+        return { success: false, error: `Failed to run npm script: ${text}` };
+      }
       if (!response.ok) {
         return { success: false, error: data.stderr || data.message || "Failed to run npm script" };
       }

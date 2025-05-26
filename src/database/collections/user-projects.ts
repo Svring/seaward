@@ -42,6 +42,11 @@ export const UserProjects: CollectionConfig = {
       required: false,
     },
     {
+      name: 'public_vector_store_address',
+      type: 'text',
+      required: false,
+    },
+    {
       name: 'project_sessions',
       type: 'relationship',
       relationTo: 'project_sessions',
